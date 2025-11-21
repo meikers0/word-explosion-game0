@@ -1,0 +1,5 @@
+{
+  "name": "WordExplosion",
+  "description": "A high-tension multiplayer word game. Pass the bomb by typing a word containing the given syllable before it explodes. Built with React, Node.js, and Socket.io.",
+  "requestFramePermissions": []
+}
