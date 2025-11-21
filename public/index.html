@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WordExplosion</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Favicon simple (data uri) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💣</text></svg>">
+</head>
+<body>
+
+    <!-- Pantalla de Carga / Login -->
+    <div id="login-screen" class="screen active">
+        <div class="card">
+            <h1>💣 WordExplosion</h1>
+            <p>El juego de palabras explosivo</p>
+            <input type="text" id="username-input" placeholder="Tu Nombre" maxlength="10" autofocus>
+            <button id="join-btn">Entrar a la Sala</button>
+            
+            <div class="leaderboard-preview">
+                <h3>🏆 Ranking (Victorias)</h3>
+                <ul id="login-leaderboard"></ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sala de Espera -->
+    <div id="waiting-screen" class="screen">
+        <div class="card">
+            <h2>Sala de Espera</h2>
+            <div id="players-list-waiting" class="players-grid"></div>
+            <p id="waiting-status">Esperando jugadores...</p>
+            <button id="start-btn" class="hidden">Comenzar Partida</button>
+        </div>
+    </div>
+
+    <!-- Pantalla de Juego -->
+    <div id="game-screen" class="screen">
+        <div class="game-container">
+            
+            <!-- Bomba y Temporizador -->
+            <div class="bomb-container">
+                <div class="bomb-graphic">💣</div>
+                <div class="spark"></div>
+                <div id="bomb-timer">--.--s</div>
+            </div>
+            
+            <!-- Sílaba a usar -->
+            <div class="syllable-display">
+                <span class="label">USA ESTO:</span>
+                <h1 id="current-syllable">...</h1>
+            </div>
+
+            <!-- Input de Palabra -->
+            <div class="input-area">
+                <input type="text" id="word-input" placeholder="Escribe rápido..." autocomplete="off" disabled>
+                <div id="feedback-msg"></div>
+            </div>
+
+        </div>
+
+        <!-- Footer: Lista de Jugadores (Scroll Horizontal) -->
+        <div class="footer-players">
+            <div id="active-players-list" class="scrolling-wrapper">
+                <!-- Jugadores inyectados por JS -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay de Game Over -->
+    <div id="game-over-overlay" class="overlay hidden">
+        <div class="overlay-content">
+            <h1 id="winner-name">¡Ganador!</h1>
+            <button id="back-to-lobby">Volver a la Sala</button>
+        </div>
+    </div>
+
+    <!-- Dependencias: Socket.io y JS Cliente -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>

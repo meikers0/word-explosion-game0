@@ -1,0 +1,281 @@
+:root {
+    --bg-color: #1a1a2e;
+    --card-bg: #16213e;
+    --accent: #e94560;
+    --text: #ffffff;
+    --highlight: #0f3460;
+    --success: #4cc9f0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden; /* Prevenir scroll global */
+    display: flex;
+    flex-direction: column;
+}
+
+/* --- Pantallas --- */
+.screen {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: opacity 0.3s;
+}
+
+.screen.active {
+    display: flex;
+    z-index: 10;
+}
+
+/* --- Componentes UI --- */
+.card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 15px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    text-align: center;
+    max-width: 400px;
+    width: 90%;
+}
+
+input {
+    width: 100%;
+    padding: 12px;
+    margin: 15px 0;
+    border-radius: 8px;
+    border: 2px solid var(--highlight);
+    background: #0f3460;
+    color: white;
+    font-size: 1.2rem;
+    text-align: center;
+    outline: none;
+}
+
+input:focus {
+    border-color: var(--accent);
+}
+
+button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.1s;
+    width: 100%;
+}
+
+button:hover {
+    transform: scale(1.05);
+    background: #ff2e4d;
+}
+
+button.hidden {
+    display: none;
+}
+
+/* --- Juego --- */
+.game-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+.bomb-container {
+    position: relative;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: float 3s ease-in-out infinite;
+}
+
+.bomb-graphic {
+    font-size: 6rem;
+}
+
+.bomb-graphic.ticking {
+    animation: shake 0.5s infinite;
+}
+
+.bomb-graphic.critical {
+    animation: shake 0.1s infinite;
+    color: red;
+}
+
+#bomb-timer {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    font-family: 'Courier New', Courier, monospace;
+    margin-top: 5px;
+    transition: color 0.3s;
+}
+
+#bomb-timer.urgent {
+    color: #ff2e4d;
+    animation: pulse-red 0.5s infinite alternate;
+}
+
+@keyframes pulse-red {
+    from { text-shadow: 0 0 5px #ff2e4d; transform: scale(1); }
+    to { text-shadow: 0 0 20px #ff2e4d; transform: scale(1.1); }
+}
+
+.syllable-display {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.syllable-display .label {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#current-syllable {
+    font-size: 4rem;
+    font-weight: bold;
+    color: var(--success);
+    text-shadow: 0 0 10px var(--success);
+}
+
+#feedback-msg {
+    height: 20px;
+    margin-top: 10px;
+    color: var(--accent);
+    font-weight: bold;
+}
+
+/* --- Footer Players List --- */
+.footer-players {
+    width: 100%;
+    height: 140px;
+    background: rgba(0,0,0,0.3);
+    border-top: 1px solid var(--highlight);
+    padding: 10px 0;
+}
+
+.scrolling-wrapper {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    align-items: center;
+    height: 100%;
+    padding: 0 50vw; /* Espacio para centrar */
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+
+.scrolling-wrapper::-webkit-scrollbar {
+    display: none; 
+}
+
+.player-card {
+    flex: 0 0 auto;
+    width: 100px;
+    height: 100px;
+    background: var(--card-bg);
+    margin: 0 10px;
+    border-radius: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid transparent;
+    transition: all 0.3s;
+    opacity: 0.6;
+    position: relative;
+}
+
+.player-card.active-turn {
+    border-color: var(--success);
+    transform: scale(1.15);
+    opacity: 1;
+    box-shadow: 0 0 15px var(--success);
+    z-index: 5;
+}
+
+.player-card.eliminated {
+    filter: grayscale(100%);
+    opacity: 0.3;
+    text-decoration: line-through;
+}
+
+.player-avatar {
+    font-size: 2rem;
+}
+
+.player-name {
+    font-size: 0.8rem;
+    margin-top: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90%;
+}
+
+.player-lives {
+    font-size: 0.7rem;
+    color: var(--accent);
+}
+
+/* --- Animaciones --- */
+@keyframes shake {
+    0% { transform: translate(1px, 1px) rotate(0deg); }
+    10% { transform: translate(-1px, -2px) rotate(-1deg); }
+    20% { transform: translate(-3px, 0px) rotate(1deg); }
+    30% { transform: translate(3px, 2px) rotate(0deg); }
+    40% { transform: translate(1px, -1px) rotate(1deg); }
+    50% { transform: translate(-1px, 2px) rotate(-1deg); }
+    60% { transform: translate(-3px, 1px) rotate(0deg); }
+    70% { transform: translate(3px, 1px) rotate(-1deg); }
+    80% { transform: translate(-1px, -1px) rotate(1deg); }
+    90% { transform: translate(1px, 2px) rotate(0deg); }
+    100% { transform: translate(1px, -2px) rotate(-1deg); }
+}
+
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+    100% { transform: translateY(0px); }
+}
+
+.screen-shake {
+    animation: shake 0.5s;
+}
+
+/* --- Overlay --- */
+.overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+}
+.overlay.hidden { display: none; }
+.overlay-content { text-align: center; animation: float 2s infinite; }
