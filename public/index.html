@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WordExplosion</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Favicon simple (data uri) -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💣</text></svg>">
 </head>
 <body>
@@ -14,13 +13,26 @@
     <div id="login-screen" class="screen active">
         <div class="card">
             <h1>💣 WordExplosion</h1>
-            <p>El juego de palabras explosivo</p>
-            <input type="text" id="username-input" placeholder="Tu Nombre" maxlength="10" autofocus>
-            <button id="join-btn">Entrar a la Sala</button>
+            <p>Juego de Palabras Explosivo</p>
             
-            <div class="leaderboard-preview">
-                <h3>🏆 Ranking (Victorias)</h3>
-                <ul id="login-leaderboard"></ul>
+            <div class="login-form">
+                <input type="text" id="username-input" placeholder="Tu Nombre" maxlength="12">
+                
+                <div class="login-actions">
+                    <!-- Crear Sala -->
+                    <div class="action-group">
+                        <button id="create-room-btn">Crear Nueva Sala</button>
+                    </div>
+                    
+                    <div class="divider">O</div>
+
+                    <!-- Unirse a Sala -->
+                    <div class="action-group">
+                        <input type="text" id="room-code-input" placeholder="Código (4 letras)" maxlength="4" style="text-transform: uppercase;">
+                        <button id="join-room-btn" class="secondary-btn">Unirse a Sala</button>
+                    </div>
+                </div>
+                <p id="login-error" class="error-msg"></p>
             </div>
         </div>
     </div>
@@ -29,8 +41,16 @@
     <div id="waiting-screen" class="screen">
         <div class="card">
             <h2>Sala de Espera</h2>
+            
+            <div class="room-code-display">
+                <span>CÓDIGO DE SALA:</span>
+                <h1 id="display-room-code">----</h1>
+            </div>
+
             <div id="players-list-waiting" class="players-grid"></div>
             <p id="waiting-status">Esperando jugadores...</p>
+            
+            <!-- Botón solo visible para el líder -->
             <button id="start-btn" class="hidden">Comenzar Partida</button>
         </div>
     </div>
@@ -39,32 +59,30 @@
     <div id="game-screen" class="screen">
         <div class="game-container">
             
-            <!-- Bomba y Temporizador -->
             <div class="bomb-container">
                 <div class="bomb-graphic">💣</div>
                 <div class="spark"></div>
+                <!-- Temporizador Visual -->
                 <div id="bomb-timer">--.--s</div>
             </div>
             
-            <!-- Sílaba a usar -->
             <div class="syllable-display">
-                <span class="label">USA ESTO:</span>
+                <span class="label">CONTIENE:</span>
                 <h1 id="current-syllable">...</h1>
             </div>
 
-            <!-- Input de Palabra -->
             <div class="input-area">
-                <input type="text" id="word-input" placeholder="Escribe rápido..." autocomplete="off" disabled>
+                <input type="text" id="word-input" placeholder="Escribe..." autocomplete="off" disabled>
+                <div class="input-actions">
+                    <button id="surrender-btn" class="danger-btn" disabled>Rendirse 🏳️</button>
+                </div>
                 <div id="feedback-msg"></div>
             </div>
 
         </div>
 
-        <!-- Footer: Lista de Jugadores (Scroll Horizontal) -->
         <div class="footer-players">
-            <div id="active-players-list" class="scrolling-wrapper">
-                <!-- Jugadores inyectados por JS -->
-            </div>
+            <div id="active-players-list" class="scrolling-wrapper"></div>
         </div>
     </div>
 
@@ -76,7 +94,9 @@
         </div>
     </div>
 
-    <!-- Dependencias: Socket.io y JS Cliente -->
+    <!-- Créditos Footer -->
+    <div class="credits-footer">Created by Meikers</div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
 </body>
