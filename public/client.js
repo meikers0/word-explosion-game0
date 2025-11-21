@@ -1,6 +1,7 @@
+
 const socket = io();
 
-// Elementos DOM
+// --- Elementos DOM ---
 const screens = {
     login: document.getElementById('login-screen'),
     waiting: document.getElementById('waiting-screen'),
@@ -10,43 +11,40 @@ const screens = {
 const inputs = {
     username: document.getElementById('username-input'),
     roomCode: document.getElementById('room-code-input'),
-    word: document.getElementById('word-input')
+    word: document.getElementById('word-input'),
+    customWordsToggle: document.getElementById('allow-custom-words-toggle')
 };
 
 const btns = {
     create: document.getElementById('create-room-btn'),
     join: document.getElementById('join-room-btn'),
     start: document.getElementById('start-btn'),
-    back: document.getElementById('back-to-lobby'),
-    surrender: document.getElementById('surrender-btn')
+    surrender: document.getElementById('surrender-btn'),
+    back: document.getElementById('back-to-lobby')
 };
 
-const display = {
+const displays = {
+    loginError: document.getElementById('login-error'),
     roomCode: document.getElementById('display-room-code'),
-    syllable: document.getElementById('current-syllable'),
-    bomb: document.querySelector('.bomb-graphic'),
-    timer: document.getElementById('bomb-timer'),
-    feedback: document.getElementById('feedback-msg'),
-    activePlayers: document.getElementById('active-players-list'),
     waitingPlayers: document.getElementById('players-list-waiting'),
     waitingStatus: document.getElementById('waiting-status'),
-    gameOver: document.getElementById('game-over-overlay'),
+    syllable: document.getElementById('current-syllable'),
+    bombTimer: document.getElementById('bomb-timer'),
+    feedback: document.getElementById('feedback-msg'),
+    activePlayers: document.getElementById('active-players-list'),
+    bombGraphic: document.querySelector('.bomb-graphic'),
     winnerName: document.getElementById('winner-name'),
-    loginError: document.getElementById('login-error')
+    gameOverOverlay: document.getElementById('game-over-overlay')
 };
 
-// Estado Local
-let myId = null;
+// --- Estado Local ---
+let myPlayerId = null;
 let isLeader = false;
+let currentRoomState = null;
+let timerInterval = null;
 let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-// --- Navegación ---
-function showScreen(name) {
-    Object.values(screens).forEach(s => s.classList.remove('active'));
-    screens[name].classList.add('active');
-}
-
-// --- Sonidos ---
+// --- Sonidos (Sintetizados) ---
 function playSound(type) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const osc = audioCtx.createOscillator();
@@ -54,78 +52,83 @@ function playSound(type) {
     osc.connect(gain);
     gain.connect(audioCtx.destination);
 
+    const now = audioCtx.currentTime;
+    
     if (type === 'tick') {
-        osc.frequency.value = 800;
         osc.type = 'square';
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
     } else if (type === 'explosion') {
-        osc.frequency.value = 100;
         osc.type = 'sawtooth';
-        gain.gain.setValueAtTime(1, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 1);
-    } else if (type === 'success') {
-        osc.frequency.value = 600;
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        osc.start();
-        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.2);
-        osc.stop(audioCtx.currentTime + 0.2);
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.exponentialRampToValueAtTime(10, now + 1);
+        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 1);
+        osc.start(now);
+        osc.stop(now + 1);
+    } else if (type === 'valid') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
     }
+}
+
+// --- Funciones de Navegación ---
+function showScreen(screenName) {
+    Object.values(screens).forEach(s => s.classList.remove('active'));
+    screens[screenName].classList.add('active');
 }
 
 // --- Event Listeners ---
 
+// Login / Crear Sala
 btns.create.addEventListener('click', () => {
     const name = inputs.username.value;
-    if (!name) {
-        display.loginError.textContent = 'Ingresa tu nombre';
-        return;
+    if (name) {
+        socket.emit('create_room', name);
+    } else {
+        displays.loginError.textContent = 'Ingresa un nombre';
     }
-    socket.emit('create_room', name);
 });
 
+// Unirse a Sala
 btns.join.addEventListener('click', () => {
     const name = inputs.username.value;
     const code = inputs.roomCode.value.toUpperCase();
-    
-    if (!name) {
-        display.loginError.textContent = 'Ingresa tu nombre';
-        return;
+    if (name && code.length === 4) {
+        socket.emit('join_room', { playerName: name, roomId: code });
+    } else {
+        displays.loginError.textContent = 'Nombre y Código (4 letras) requeridos';
     }
-    if (code.length !== 4) {
-        display.loginError.textContent = 'Código debe ser de 4 caracteres';
-        return;
-    }
-    socket.emit('join_room', { playerName: name, roomId: code });
 });
 
+// Configuración de Sala (Toggle) - Opción Líder
+inputs.customWordsToggle.addEventListener('change', (e) => {
+    if (isLeader) {
+        socket.emit('toggle_settings', { allowCustomWords: e.target.checked });
+    } else {
+        // Revertir visualmente si no es líder y trata de cambiarlo (backup)
+        e.target.checked = !e.target.checked;
+    }
+});
+
+// Iniciar Juego
 btns.start.addEventListener('click', () => {
     if (isLeader) {
-        // Feedback inmediato al líder
-        display.waitingStatus.textContent = 'Iniciando partida...';
-        btns.start.disabled = true; 
+        displays.waitingStatus.textContent = 'Iniciando partida...';
         socket.emit('start_game');
     }
 });
 
-btns.surrender.addEventListener('click', () => {
-    if (confirm("¿Seguro que quieres rendirte? Perderás una vida.")) {
-        socket.emit('surrender');
-    }
-});
-
-btns.back.addEventListener('click', () => {
-    if (confirm("¿Volver a la sala y salir de la partida actual?")) {
-        display.gameOver.classList.add('hidden');
-        // Recargar la página es la forma más limpia de resetear todo el estado en esta arquitectura simple
-        window.location.reload();
-    }
-});
-
+// Input de Palabra
 inputs.word.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const word = inputs.word.value;
@@ -136,174 +139,188 @@ inputs.word.addEventListener('keydown', (e) => {
     }
 });
 
-// --- Socket Events ---
-
-socket.on('connect', () => {
-    console.log('Conectado al servidor');
+// Rendirse
+btns.surrender.addEventListener('click', () => {
+    socket.emit('surrender');
 });
 
+// Volver al Lobby
+btns.back.addEventListener('click', () => {
+    if (confirm("¿Seguro que quieres volver a la sala de espera?")) {
+        displays.gameOverOverlay.classList.add('hidden');
+        showScreen('waiting');
+    }
+});
+
+// --- Socket Events ---
+
 socket.on('room_joined', (data) => {
-    myId = socket.id;
+    myPlayerId = socket.id;
     isLeader = data.isLeader;
-    display.roomCode.textContent = data.roomId;
+    displays.roomCode.textContent = data.roomId;
     showScreen('waiting');
-    display.loginError.textContent = '';
-    btns.start.disabled = false; // Reset por si volvemos de otra partida
+    
+    // Configurar UI para líder
+    if (isLeader) {
+        btns.start.classList.remove('hidden');
+        inputs.customWordsToggle.disabled = false;
+    } else {
+        btns.start.classList.add('hidden');
+        inputs.customWordsToggle.disabled = true;
+    }
 });
 
 socket.on('error_msg', (msg) => {
-    display.loginError.textContent = msg;
-});
-
-socket.on('word_rejected', (msg) => {
-    display.feedback.textContent = msg;
-    display.feedback.style.color = '#e94560';
-    inputs.word.classList.add('shake');
-    setTimeout(() => {
-        display.feedback.textContent = '';
-        inputs.word.classList.remove('shake');
-    }, 1000);
-});
-
-socket.on('word_accepted', () => {
-    playSound('success');
-    display.feedback.textContent = '¡Bien!';
-    display.feedback.style.color = '#4cc9f0';
-    
-    // Animación de pase de bomba
-    display.bomb.classList.add('passing');
-    setTimeout(() => {
-        display.bomb.classList.remove('passing');
-        display.feedback.textContent = '';
-    }, 500);
-});
-
-socket.on('explosion', () => {
-    playSound('explosion');
-    document.body.classList.add('screen-shake');
-    setTimeout(() => document.body.classList.remove('screen-shake'), 500);
-});
-
-socket.on('game_over', (data) => {
-    display.winnerName.textContent = data.winner !== 'Nadie' ? `¡Ganador: ${data.winner}!` : '¡Juego Terminado!';
-    display.gameOver.classList.remove('hidden');
+    displays.loginError.textContent = msg;
 });
 
 socket.on('state_update', (state) => {
-    // Verificar si cambió mi rol
-    const me = state.players.find(p => p.id === myId);
-    if (me) isLeader = me.isLeader;
+    currentRoomState = state;
+    renderState(state);
+});
 
-    if (state.status === 'waiting') {
-        showScreen('waiting');
-        renderWaitingList(state.players);
-    } else if (state.status === 'playing') {
-        showScreen('game');
-        renderGame(state);
+socket.on('word_accepted', () => {
+    playSound('valid');
+    displays.feedback.textContent = '¡Correcto!';
+    displays.feedback.style.color = 'var(--success)';
+    
+    // Animación de pase
+    displays.bombGraphic.classList.add('passing');
+    setTimeout(() => displays.bombGraphic.classList.remove('passing'), 500);
+});
+
+socket.on('word_rejected', (msg) => {
+    displays.feedback.textContent = msg;
+    displays.feedback.style.color = 'var(--accent)';
+    inputs.word.classList.add('shake');
+    setTimeout(() => inputs.word.classList.remove('shake'), 500);
+});
+
+socket.on('explosion', (data) => {
+    playSound('explosion');
+    document.body.classList.add('screen-shake');
+    setTimeout(() => document.body.classList.remove('screen-shake'), 500);
+    
+    if (data.victimId === myPlayerId) {
+        inputs.word.disabled = true;
+        inputs.word.placeholder = "¡BOOM! Perdiste una vida";
     }
 });
 
-// --- Funciones de Renderizado ---
+socket.on('game_over', (data) => {
+    displays.winnerName.textContent = data.winner === 'Nadie' ? '¡Empate!' : `¡Ganador: ${data.winner}!`;
+    displays.gameOverOverlay.classList.remove('hidden');
+    clearInterval(timerInterval);
+});
 
-function renderWaitingList(players) {
-    display.waitingPlayers.innerHTML = players.map(p => `
-        <div class="player-card">
-            <div class="player-avatar">${p.avatar}</div>
-            <div class="player-name">
-                ${p.name}
+// --- Render Logic ---
+
+function renderState(state) {
+    // 1. Actualizar Configuración en UI (para todos)
+    inputs.customWordsToggle.checked = state.allowCustomWords;
+
+    // 2. Pantalla de Espera
+    if (state.status === 'waiting') {
+        displays.waitingPlayers.innerHTML = state.players.map(p => `
+            <div class="player-card">
+                <div class="player-avatar">${p.avatar}</div>
+                <div class="player-name">${p.name}</div>
                 ${p.isLeader ? '👑' : ''}
             </div>
-        </div>
-    `).join('');
-    
-    display.waitingStatus.textContent = `${players.length} Jugadores conectados`;
+        `).join('');
+        
+        // Si soy líder, actualizar estado del botón start
+        if (isLeader) {
+            btns.start.disabled = state.players.length < 2;
+        }
+        
+        // Reset UI de juego
+        displays.gameOverOverlay.classList.add('hidden');
+    }
 
-    // Mostrar botón SOLO si soy líder y hay suficientes jugadores
-    if (isLeader && players.length >= 1) {
-        btns.start.classList.remove('hidden');
-    } else {
-        btns.start.classList.add('hidden');
+    // 3. Pantalla de Juego
+    if (state.status === 'playing') {
+        if (!screens.game.classList.contains('active')) {
+            showScreen('game');
+        }
+
+        // Datos de ronda
+        displays.syllable.textContent = state.currentSyllable;
+        
+        const currentPlayer = state.players[state.currentTurnIndex];
+        const isMyTurn = currentPlayer.id === myPlayerId;
+
+        inputs.word.disabled = !isMyTurn;
+        btns.surrender.disabled = !isMyTurn;
+        
+        if (isMyTurn) {
+            inputs.word.focus();
+            inputs.word.placeholder = `Escribe una palabra con ${state.currentSyllable}...`;
+            displays.feedback.textContent = '';
+        } else {
+            inputs.word.placeholder = `Turno de ${currentPlayer.name}`;
+            inputs.word.value = '';
+        }
+
+        // Render Lista Jugadores (Footer)
+        renderActivePlayers(state.players, state.currentTurnIndex);
+
+        // Timer Visual
+        handleTimer(state.bombEndTime);
     }
 }
 
-let tickInterval = null;
-
-function renderGame(state) {
-    display.syllable.textContent = state.currentSyllable;
-
-    display.activePlayers.innerHTML = state.players.map((p, index) => {
-        const isActive = index === state.currentTurnIndex;
+function renderActivePlayers(players, turnIndex) {
+    displays.activePlayers.innerHTML = players.map((p, i) => {
+        const isActive = i === turnIndex;
         const isDead = p.lives <= 0;
-        const isMe = p.id === myId;
+        const hearts = '❤️'.repeat(p.lives) + '🖤'.repeat(3 - p.lives);
         
-        let classes = 'player-card';
-        if (isActive) classes += ' active-turn';
-        if (isDead) classes += ' eliminated';
-
         return `
-            <div class="${classes}" id="player-${p.id}">
+            <div id="player-card-${i}" class="player-card ${isActive ? 'active-turn' : ''} ${isDead ? 'eliminated' : ''}">
                 <div class="player-avatar">${p.avatar}</div>
-                <div class="player-name">${p.name} ${isMe ? '(Tú)' : ''}</div>
-                <div class="player-lives">${'❤️'.repeat(Math.max(0, p.lives))}</div>
+                <div class="player-name">${p.name}</div>
+                <div class="player-lives">${hearts}</div>
             </div>
         `;
     }).join('');
 
-    // Scroll Suave
-    const activeCard = document.querySelector('.active-turn');
+    // Scroll Suave para centrar al jugador activo
+    const activeCard = document.getElementById(`player-card-${turnIndex}`);
     if (activeCard) {
-        activeCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        activeCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     }
+}
 
-    // Input Control
-    const currentPlayer = state.players[state.currentTurnIndex];
-    const isMyTurn = currentPlayer && currentPlayer.id === myId;
+function handleTimer(endTime) {
+    if (timerInterval) clearInterval(timerInterval);
 
-    inputs.word.disabled = !isMyTurn;
-    btns.surrender.disabled = !isMyTurn; // Botón de rendirse
-
-    if (isMyTurn) {
-        inputs.word.focus();
-        inputs.word.placeholder = `Palabra que contenga ${state.currentSyllable}`;
-    } else {
-        inputs.word.value = '';
-        inputs.word.placeholder = `Turno de ${currentPlayer ? currentPlayer.name : '...'}`;
-    }
-
-    // Timer Visual
-    clearInterval(tickInterval);
-    
-    let nextTickTime = 0;
-    const updateBomb = () => {
+    const update = () => {
         const now = Date.now();
-        const remaining = state.bombEndTime - now;
+        const remaining = Math.max(0, endTime - now);
+        const seconds = (remaining / 1000).toFixed(2);
         
-        if (remaining > 0) {
-            display.timer.textContent = (remaining / 1000).toFixed(1) + 's';
+        displays.bombTimer.textContent = `${seconds}s`;
+
+        // Efectos visuales del timer
+        if (remaining < 5000) {
+            displays.bombTimer.classList.add('urgent');
+            displays.bombGraphic.classList.add('critical');
+            if (Math.random() > 0.7) playSound('tick'); // Tick aleatorio acelerado
         } else {
-            display.timer.textContent = '0.0s';
+            displays.bombTimer.classList.remove('urgent');
+            displays.bombGraphic.classList.remove('critical');
+            if (Math.floor(Date.now() / 1000) !== Math.floor((Date.now() - 100) / 1000)) {
+                playSound('tick'); // Tick cada segundo
+            }
         }
 
         if (remaining <= 0) {
-            display.bomb.style.transform = 'scale(1)';
-            display.bomb.classList.remove('ticking', 'critical');
-            display.timer.classList.remove('urgent');
-        } else {
-            if (remaining < 5000) {
-                display.bomb.classList.add('critical');
-                display.timer.classList.add('urgent');
-                if (now >= nextTickTime) {
-                    playSound('tick');
-                    nextTickTime = now + 500;
-                }
-            } else {
-                display.bomb.classList.remove('critical');
-                display.bomb.classList.add('ticking');
-                display.timer.classList.remove('urgent');
-            }
+            clearInterval(timerInterval);
+            displays.bombTimer.textContent = "BOOM!";
         }
     };
-    
-    tickInterval = setInterval(updateBomb, 100);
-    updateBomb();
+
+    update(); // Ejecutar inmediatamente
+    timerInterval = setInterval(update, 100);
 }

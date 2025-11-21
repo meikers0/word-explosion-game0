@@ -47,6 +47,15 @@
                 <h1 id="display-room-code">----</h1>
             </div>
 
+            <!-- Configuración de Sala (Visible para todos, editable por líder) -->
+            <div class="room-settings">
+                <label class="toggle-container">
+                    <input type="checkbox" id="allow-custom-words-toggle" disabled>
+                    <span class="toggle-checkmark"></span>
+                    Permitir palabras inventadas
+                </label>
+            </div>
+
             <div id="players-list-waiting" class="players-grid"></div>
             <p id="waiting-status">Esperando jugadores...</p>
             
@@ -99,5 +108,31 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
+    <style>
+        /* Estilos Inline rápidos para el toggle */
+        .room-settings {
+            margin: 10px 0;
+            display: flex;
+            justify-content: center;
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .toggle-container input {
+            width: auto;
+            margin: 0;
+        }
+        .toggle-container input:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+    </style>
 </body>
 </html>
