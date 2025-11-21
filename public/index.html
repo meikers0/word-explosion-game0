@@ -3,17 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WordExplosion</title>
+    <title>WordExplosion & Impostor</title>
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💣</text></svg>">
 </head>
 <body>
 
+    <button id="rules-btn" class="top-right-btn">📜 Reglas</button>
+
     <!-- Pantalla de Carga / Login -->
     <div id="login-screen" class="screen active">
         <div class="card">
             <h1>💣 WordExplosion</h1>
-            <p>Juego de Palabras Explosivo</p>
+            <p>Juegos de Palabras Multijugador</p>
             
             <div class="login-form">
                 <input type="text" id="username-input" placeholder="Tu Nombre" maxlength="12">
@@ -47,12 +49,18 @@
                 <h1 id="display-room-code">----</h1>
             </div>
 
-            <!-- Configuración de Sala (Visible para todos, editable por líder) -->
+            <!-- Configuración de Sala -->
             <div class="room-settings">
-                <label class="toggle-container">
+                <label>Modo de Juego:</label>
+                <select id="game-mode-select" disabled>
+                    <option value="explosion">💣 Word Explosion</option>
+                    <option value="impostor">🕵️ Impostor de Palabras</option>
+                </select>
+
+                <label class="toggle-container" id="custom-words-container">
                     <input type="checkbox" id="allow-custom-words-toggle" disabled>
                     <span class="toggle-checkmark"></span>
-                    Permitir palabras inventadas
+                    Palabras inventadas (Solo Explosion)
                 </label>
             </div>
 
@@ -66,12 +74,12 @@
 
     <!-- Pantalla de Juego -->
     <div id="game-screen" class="screen">
-        <div class="game-container">
-            
+        
+        <!-- Área para WordExplosion -->
+        <div id="bomb-game-area" class="game-container hidden">
             <div class="bomb-container">
                 <div class="bomb-graphic">💣</div>
                 <div class="spark"></div>
-                <!-- Temporizador Visual -->
                 <div id="bomb-timer">--.--s</div>
             </div>
             
@@ -87,7 +95,30 @@
                 </div>
                 <div id="feedback-msg"></div>
             </div>
+        </div>
 
+        <!-- Área para Impostor -->
+        <div id="impostor-game-area" class="game-container hidden">
+            <div id="impostor-role-card" class="role-card">
+                <h3>TU ROL:</h3>
+                <h1 id="my-secret-word">?????</h1>
+                <p id="role-desc">...</p>
+            </div>
+
+            <div id="impostor-phase-display" class="phase-banner">Fase: Discusión</div>
+
+            <div id="impostor-input-area" class="input-area hidden">
+                <input type="text" id="clue-input" placeholder="Escribe tu pista (1 palabra)..." maxlength="20" autocomplete="off">
+                <button id="send-clue-btn">Enviar Pista</button>
+            </div>
+
+            <div id="impostor-vote-area" class="vote-grid hidden">
+                <!-- Botones generados dinámicamente para votar -->
+            </div>
+
+            <div id="clues-list" class="clues-container">
+                <!-- Pistas de los jugadores -->
+            </div>
         </div>
 
         <div class="footer-players">
@@ -103,36 +134,36 @@
         </div>
     </div>
 
+    <!-- Modal de Reglas -->
+    <div id="rules-modal" class="overlay hidden">
+        <div class="overlay-content rules-content">
+            <h2>Reglas del Juego</h2>
+            <div class="rules-body">
+                <h3>💣 WordExplosion</h3>
+                <p>Una bomba de tiempo está corriendo. Cuando sea tu turno, debes decir una palabra que contenga la sílaba mostrada.</p>
+                <ul>
+                    <li>La sílaba debe estar en el orden exacto (ej: "OS" -> "M<b>OS</b>CA").</li>
+                    <li>No puedes repetir palabras usadas.</li>
+                    <li>Si la bomba explota en tu turno, pierdes una vida.</li>
+                </ul>
+
+                <h3>🕵️ Impostor de Palabras</h3>
+                <p>Todos reciben la misma Palabra Secreta, excepto el Impostor.</p>
+                <ul>
+                    <li><b>Pueblo:</b> Descubrir quién no sabe la palabra.</li>
+                    <li><b>Impostor:</b> Pasar desapercibido y sobrevivir hasta el final.</li>
+                    <li><b>Ronda:</b> Todos escriben una pista relacionada con la palabra secreta.</li>
+                    <li><b>Votación:</b> Al leer las pistas, votad para expulsar al sospechoso.</li>
+                </ul>
+            </div>
+            <button id="close-rules-btn">Cerrar</button>
+        </div>
+    </div>
+
     <!-- Créditos Footer -->
     <div class="credits-footer">Created by Meikers</div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="client.js"></script>
-    <style>
-        /* Estilos Inline rápidos para el toggle */
-        .room-settings {
-            margin: 10px 0;
-            display: flex;
-            justify-content: center;
-            background: rgba(255,255,255,0.05);
-            padding: 10px;
-            border-radius: 8px;
-        }
-        .toggle-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
-        .toggle-container input {
-            width: auto;
-            margin: 0;
-        }
-        .toggle-container input:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-    </style>
 </body>
 </html>

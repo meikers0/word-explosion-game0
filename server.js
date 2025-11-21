@@ -49,6 +49,7 @@ const FALLBACK_DICTIONARY = new Set([
 ]);
 
 let GLOBAL_DICTIONARY = new Set();
+let DICTIONARY_ARRAY = []; // Para seleccionar palabras aleatorias en modo Impostor
 
 // Cargar Diccionario Externo (Optimizado)
 function loadDictionary() {
@@ -64,6 +65,7 @@ function loadDictionary() {
         const word = line.trim().toUpperCase();
         if (word.length > 1) {
           GLOBAL_DICTIONARY.add(word);
+          DICTIONARY_ARRAY.push(word);
           count++;
         }
       });
@@ -74,6 +76,7 @@ function loadDictionary() {
   } catch (error) {
     console.warn(`⚠️ Advertencia: ${error.message}. Usando diccionario de respaldo.`);
     GLOBAL_DICTIONARY = FALLBACK_DICTIONARY;
+    DICTIONARY_ARRAY = Array.from(FALLBACK_DICTIONARY);
   }
 }
 
@@ -100,20 +103,30 @@ function createRoom(leaderId, leaderName, avatar) {
   rooms[roomId] = {
     id: roomId,
     status: 'waiting',
+    gameMode: 'explosion', // 'explosion' | 'impostor'
     players: [{
       id: leaderId,
       name: leaderName,
       avatar: avatar,
       lives: 3,
-      isLeader: true
+      isLeader: true,
+      isImpostor: false
     }],
     leaderboard: {}, 
+    
+    // WordExplosion State
     currentTurnIndex: 0,
     currentSyllable: '',
     usedWords: new Set(),
     bombEndTime: 0,
     bombDuration: 0,
-    allowCustomWords: false
+    allowCustomWords: false,
+
+    // Impostor State
+    impostorPhase: 'idle', // 'reveal', 'clue', 'vote', 'result'
+    secretWord: '',
+    clues: {}, // { playerId: "pista" }
+    votes: {}  // { voterId: targetId }
   };
   return roomId;
 }
@@ -130,15 +143,36 @@ function resetBomb(room, min = 10000, max = 30000) {
 
 function getPublicState(room) {
   if (!room) return null;
+  
+  // Sanitizar estado para Impostor
+  const safePlayers = room.players.map(p => ({
+    id: p.id,
+    name: p.name,
+    avatar: p.avatar,
+    lives: p.lives,
+    isLeader: p.isLeader,
+    // NO enviar isImpostor
+    hasVoted: !!room.votes[p.id],
+    hasClue: !!room.clues[p.id]
+  }));
+
   return {
     roomId: room.id,
     status: room.status,
-    players: room.players,
+    gameMode: room.gameMode,
+    players: safePlayers,
+    leaderboard: room.leaderboard,
+    allowCustomWords: room.allowCustomWords,
+    
+    // Explosion
     currentTurnIndex: room.currentTurnIndex,
     currentSyllable: room.currentSyllable,
     bombEndTime: room.bombEndTime,
-    leaderboard: room.leaderboard,
-    allowCustomWords: room.allowCustomWords
+
+    // Impostor
+    impostorPhase: room.impostorPhase,
+    clues: room.impostorPhase === 'vote' || room.impostorPhase === 'result' ? room.clues : {}, // Ocultar pistas hasta votar
+    secretWord: room.impostorPhase === 'result' ? room.secretWord : null // Solo revelar al final
   };
 }
 
@@ -194,15 +228,80 @@ function handleExplosion(room) {
   }
 }
 
-// Game Loop Check
+// --- Lógica Impostor ---
+function setupImpostorGame(room) {
+  // Reset
+  room.players.forEach(p => {
+    p.lives = 1; // 1 vida = vivo en este modo
+    p.isImpostor = false;
+  });
+  room.clues = {};
+  room.votes = {};
+  
+  // Elegir palabra
+  room.secretWord = DICTIONARY_ARRAY[Math.floor(Math.random() * DICTIONARY_ARRAY.length)];
+
+  // Elegir Impostor
+  const impostorIndex = Math.floor(Math.random() * room.players.length);
+  room.players[impostorIndex].isImpostor = true;
+
+  room.impostorPhase = 'reveal';
+  
+  // Notificar roles privados
+  room.players.forEach(p => {
+    const socket = io.sockets.sockets.get(p.id);
+    if (socket) {
+      socket.emit('impostor_role', {
+        isImpostor: p.isImpostor,
+        secretWord: p.isImpostor ? null : room.secretWord
+      });
+    }
+  });
+
+  io.to(room.id).emit('state_update', getPublicState(room));
+
+  // Transición a Pistas después de 5s
+  setTimeout(() => {
+    if (rooms[room.id] && room.status === 'playing') {
+      room.impostorPhase = 'clue';
+      io.to(room.id).emit('state_update', getPublicState(room));
+    }
+  }, 5000);
+}
+
+function checkImpostorWinCondition(room) {
+  const alivePlayers = room.players.filter(p => p.lives > 0);
+  const impostor = alivePlayers.find(p => p.isImpostor);
+  
+  // Caso 1: Impostor Eliminado -> Gana el Pueblo
+  if (!impostor) {
+    room.status = 'waiting';
+    io.to(room.id).emit('game_over', { winner: 'El Pueblo (Ciudadanos)' });
+    io.to(room.id).emit('state_update', getPublicState(room));
+    return true;
+  }
+
+  // Caso 2: Impostor + 1 Ciudadano -> Gana Impostor
+  if (alivePlayers.length <= 2) {
+    room.status = 'waiting';
+    room.leaderboard[impostor.name] = (room.leaderboard[impostor.name] || 0) + 1;
+    io.to(room.id).emit('game_over', { winner: `El Impostor (${impostor.name})` });
+    io.to(room.id).emit('state_update', getPublicState(room));
+    return true;
+  }
+
+  return false; // El juego sigue
+}
+
+// Game Loop Check (Solo para BombParty)
 setInterval(() => {
   const now = Date.now();
   for (const roomId in rooms) {
     const room = rooms[roomId];
-    if (room.status === 'playing') {
+    if (room.status === 'playing' && room.gameMode === 'explosion') {
       if (now > room.bombEndTime) {
         handleExplosion(room);
-        room.bombEndTime = now + 999999; // Evitar explosiones múltiples
+        room.bombEndTime = now + 999999; 
       }
     }
   }
@@ -268,6 +367,19 @@ io.on('connection', (socket) => {
 
     if (typeof settings.allowCustomWords === 'boolean') {
       room.allowCustomWords = settings.allowCustomWords;
+    }
+    io.to(roomId).emit('state_update', getPublicState(room));
+  });
+
+  socket.on('change_mode', (mode) => {
+    const roomId = socket.data.roomId;
+    const room = rooms[roomId];
+    if (!room) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isLeader) return;
+
+    if (mode === 'explosion' || mode === 'impostor') {
+      room.gameMode = mode;
       io.to(roomId).emit('state_update', getPublicState(room));
     }
   });
@@ -278,49 +390,45 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (!room || room.status === 'playing') return;
 
-    // Solo líder
     const player = room.players.find(p => p.id === socket.id);
     if (!player || !player.isLeader) return;
-
-    if (room.players.length < 2) return;
+    if (room.players.length < 2) return; // Ojo: Impostor necesita min 3 idealmente, pero dejamos 2 para test
 
     room.status = 'playing';
     room.usedWords.clear();
-    // Reset vidas
-    room.players.forEach(p => p.lives = 3);
-    
-    room.currentSyllable = generateSyllable();
-    resetBomb(room);
 
-    io.to(roomId).emit('state_update', getPublicState(room));
+    if (room.gameMode === 'explosion') {
+      room.players.forEach(p => p.lives = 3);
+      room.currentSyllable = generateSyllable();
+      resetBomb(room);
+      io.to(roomId).emit('state_update', getPublicState(room));
+    } else if (room.gameMode === 'impostor') {
+      setupImpostorGame(room);
+    }
   });
 
-  // --- ENVIAR PALABRA ---
+  // --- ENVIAR PALABRA (EXPLOSION) ---
   socket.on('submit_word', (wordInput) => {
     const roomId = socket.data.roomId;
     const room = rooms[roomId];
-    if (!room || room.status !== 'playing') return;
+    if (!room || room.status !== 'playing' || room.gameMode !== 'explosion') return;
 
-    // Verificar turno
     const player = room.players[room.currentTurnIndex];
     if (player.id !== socket.id) return;
 
     let word = wordInput.trim().toUpperCase();
     const syllable = room.currentSyllable;
 
-    // 1. Regla de Oro (Inclusión)
     if (!word.includes(syllable)) {
       socket.emit('word_rejected', `Debe contener "${syllable}"`);
       return;
     }
 
-    // 2. Repetición
     if (room.usedWords.has(word)) {
       socket.emit('word_rejected', '¡Palabra ya usada!');
       return;
     }
 
-    // 3. Léxico (Diccionario vs Aporte)
     const inDict = GLOBAL_DICTIONARY.has(word);
     
     if (inDict || room.allowCustomWords) {
@@ -332,15 +440,108 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- IMPOSTOR: ENVIAR PISTA ---
+  socket.on('submit_clue', (clue) => {
+    const roomId = socket.data.roomId;
+    const room = rooms[roomId];
+    if (!room || room.status !== 'playing' || room.gameMode !== 'impostor' || room.impostorPhase !== 'clue') return;
+
+    // Solo vivos
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.lives <= 0) return;
+
+    room.clues[socket.id] = clue.substring(0, 20).toUpperCase();
+    
+    // Verificar si todos enviaron
+    const alive = room.players.filter(p => p.lives > 0);
+    const allSubmitted = alive.every(p => room.clues[p.id]);
+
+    if (allSubmitted) {
+      room.impostorPhase = 'vote';
+    }
+    io.to(roomId).emit('state_update', getPublicState(room));
+  });
+
+  // --- IMPOSTOR: VOTAR ---
+  socket.on('submit_vote', (targetId) => {
+    const roomId = socket.data.roomId;
+    const room = rooms[roomId];
+    if (!room || room.status !== 'playing' || room.gameMode !== 'impostor' || room.impostorPhase !== 'vote') return;
+
+    // Solo vivos votan
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || player.lives <= 0) return;
+
+    room.votes[socket.id] = targetId;
+
+    // Verificar si todos votaron
+    const alive = room.players.filter(p => p.lives > 0);
+    const allVoted = alive.every(p => room.votes[p.id]);
+
+    if (allVoted) {
+      // Calcular resultados
+      const voteCounts = {};
+      let maxVotes = 0;
+      let ejectedId = null;
+
+      Object.values(room.votes).forEach(tid => {
+        voteCounts[tid] = (voteCounts[tid] || 0) + 1;
+        if (voteCounts[tid] > maxVotes) {
+          maxVotes = voteCounts[tid];
+          ejectedId = tid;
+        } else if (voteCounts[tid] === maxVotes) {
+          ejectedId = null; // Empate, nadie muere (simplificado)
+        }
+      });
+
+      const ejected = room.players.find(p => p.id === ejectedId);
+      
+      if (ejected) {
+        ejected.lives = 0;
+        
+        // Puntos para quienes votaron correctamente al impostor
+        if (ejected.isImpostor) {
+          alive.forEach(p => {
+            if (room.votes[p.id] === ejectedId) {
+               // Bonus por cazar al impostor
+               room.leaderboard[p.name] = (room.leaderboard[p.name] || 0) + 1;
+            }
+          });
+        }
+        io.to(roomId).emit('impostor_ejected', { name: ejected.name, isImpostor: ejected.isImpostor });
+      } else {
+        io.to(roomId).emit('impostor_skipped', {});
+      }
+
+      // Check Win
+      if (!checkImpostorWinCondition(room)) {
+        // Nueva Ronda
+        room.impostorPhase = 'result'; // Breve pausa para ver resultados
+        io.to(roomId).emit('state_update', getPublicState(room));
+        
+        setTimeout(() => {
+          room.impostorPhase = 'clue';
+          room.clues = {};
+          room.votes = {};
+          io.to(roomId).emit('state_update', getPublicState(room));
+        }, 4000);
+      }
+    } else {
+      io.to(roomId).emit('state_update', getPublicState(room));
+    }
+  });
+
   // --- RENDIRSE ---
   socket.on('surrender', () => {
     const roomId = socket.data.roomId;
     const room = rooms[roomId];
     if (!room || room.status !== 'playing') return;
-
-    const player = room.players[room.currentTurnIndex];
-    if (player.id === socket.id) {
-      handleExplosion(room);
+    
+    if (room.gameMode === 'explosion') {
+        const player = room.players[room.currentTurnIndex];
+        if (player.id === socket.id) {
+        handleExplosion(room);
+        }
     }
   });
 
@@ -354,10 +555,15 @@ io.on('connection', (socket) => {
       if (room.players.length === 0) {
         delete rooms[roomId];
       } else {
-        // Reasignar líder si se fue
         if (!room.players.some(p => p.isLeader)) {
           room.players[0].isLeader = true;
         }
+        
+        // Si era Impostor y se fue en media partida
+        if (room.status === 'playing' && room.gameMode === 'impostor') {
+             checkImpostorWinCondition(room);
+        }
+
         io.to(roomId).emit('state_update', getPublicState(room));
       }
     }

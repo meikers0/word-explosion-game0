@@ -6,6 +6,7 @@
     --highlight: #0f3460;
     --success: #4cc9f0;
     --warning: #ffb703;
+    --impostor: #ff4757;
 }
 
 * {
@@ -54,7 +55,7 @@ body {
     gap: 1rem;
 }
 
-h1, h2 {
+h1, h2, h3 {
     color: var(--accent);
 }
 
@@ -102,7 +103,7 @@ h1, h2 {
     min-height: 1.2rem;
 }
 
-input {
+input, select {
     padding: 12px;
     border-radius: 8px;
     border: 2px solid var(--highlight);
@@ -112,7 +113,11 @@ input {
     text-align: center;
 }
 
-input:focus {
+select {
+    cursor: pointer;
+}
+
+input:focus, select:focus {
     outline: none;
     border-color: var(--accent);
 }
@@ -154,6 +159,16 @@ button.hidden {
     display: none;
 }
 
+.top-right-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    padding: 8px 15px;
+    background: rgba(255,255,255,0.1);
+    font-size: 0.8rem;
+}
+
 /* --- Sala de Espera --- */
 .room-code-display {
     background: var(--highlight);
@@ -174,6 +189,32 @@ button.hidden {
     margin-top: 5px;
 }
 
+.room-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(255,255,255,0.05);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.room-settings label {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+.toggle-container input {
+    width: auto;
+    margin: 0;
+}
+
 .players-grid {
     display: flex;
     flex-wrap: wrap;
@@ -184,7 +225,7 @@ button.hidden {
     margin: 1rem 0;
 }
 
-/* --- Juego --- */
+/* --- Juego (General) --- */
 .game-container {
     flex: 1;
     display: flex;
@@ -195,6 +236,11 @@ button.hidden {
     max-width: 600px;
 }
 
+.game-container.hidden {
+    display: none;
+}
+
+/* --- Word Explosion UI --- */
 .bomb-container {
     position: relative;
     margin-bottom: 2rem;
@@ -207,17 +253,8 @@ button.hidden {
     font-size: 5rem;
     transition: transform 0.2s;
 }
-
-/* Animación de pase */
 .bomb-graphic.passing {
     animation: bouncePass 0.5s cubic-bezier(0.36, 0, 0.66, -0.56);
-}
-
-@keyframes bouncePass {
-    0% { transform: scale(1) rotate(0deg); }
-    30% { transform: scale(1.3) rotate(20deg); }
-    60% { transform: scale(0.8) rotate(-20deg); }
-    100% { transform: scale(1) rotate(0deg); }
 }
 
 #bomb-timer {
@@ -230,36 +267,11 @@ button.hidden {
     padding: 5px 10px;
     border-radius: 5px;
     border: 1px solid rgba(255,255,255,0.1);
-    transition: color 0.2s;
 }
 
 #bomb-timer.urgent {
     color: var(--accent);
     animation: pulseText 0.5s infinite alternate;
-}
-
-@keyframes pulseText {
-    from { text-shadow: 0 0 5px red; }
-    to { text-shadow: 0 0 15px red; transform: scale(1.1); }
-}
-
-.ticking {
-    animation: pulse 0.5s infinite alternate;
-}
-
-.critical {
-    animation: shake 0.1s infinite;
-    color: red;
-}
-
-.syllable-display {
-    text-align: center;
-    margin-bottom: 2rem;
-}
-
-.syllable-display .label {
-    font-size: 0.9rem;
-    opacity: 0.7;
 }
 
 .syllable-display h1 {
@@ -269,6 +281,76 @@ button.hidden {
     color: var(--text);
 }
 
+/* --- Impostor UI --- */
+.role-card {
+    background: #2c3e50;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+    animation: popIn 0.5s;
+    border: 2px solid var(--highlight);
+}
+
+.role-card h1 {
+    font-size: 3rem;
+    margin: 10px 0;
+}
+
+.impostor-reveal {
+    color: var(--impostor) !important;
+    border-color: var(--impostor);
+}
+
+.phase-banner {
+    background: var(--highlight);
+    padding: 5px 20px;
+    border-radius: 20px;
+    margin-bottom: 15px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.clues-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 20px;
+    width: 100%;
+}
+
+.clue-item {
+    background: rgba(255,255,255,0.1);
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-size: 0.9rem;
+}
+
+.clue-item span {
+    color: var(--success);
+    font-weight: bold;
+}
+
+.vote-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    width: 100%;
+    padding: 10px;
+}
+
+.vote-btn {
+    background: var(--highlight);
+    padding: 15px;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+.vote-btn:hover {
+    background: var(--impostor);
+}
+
+/* --- Common Input --- */
 .input-area {
     width: 100%;
     display: flex;
@@ -276,14 +358,14 @@ button.hidden {
     align-items: center;
 }
 
+.input-area.hidden {
+    display: none;
+}
+
 .input-area input {
     width: 80%;
     font-size: 1.5rem;
     text-transform: uppercase;
-}
-
-.input-actions {
-    margin-top: 10px;
 }
 
 #feedback-msg {
@@ -347,11 +429,7 @@ button.hidden {
     max-width: 90px;
 }
 
-.player-lives {
-    font-size: 0.8rem;
-}
-
-/* --- Overlay --- */
+/* --- Overlay & Modal --- */
 .overlay {
     position: fixed;
     top: 0; left: 0;
@@ -369,10 +447,33 @@ button.hidden {
 
 .overlay-content {
     text-align: center;
-    animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    animation: popIn 0.5s;
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 15px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
 }
 
-/* --- Credits --- */
+.rules-body {
+    text-align: left;
+    margin: 20px 0;
+    line-height: 1.5;
+}
+
+.rules-body h3 {
+    margin-top: 15px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 5px;
+}
+
+.rules-body ul {
+    margin-left: 20px;
+    margin-top: 5px;
+}
+
 .credits-footer {
     position: fixed;
     bottom: 10px;
@@ -384,27 +485,16 @@ button.hidden {
 }
 
 /* Animations */
-@keyframes pulse {
-    from { transform: scale(1); }
-    to { transform: scale(1.1); }
+@keyframes bouncePass {
+    0% { transform: scale(1) rotate(0deg); }
+    30% { transform: scale(1.3) rotate(20deg); }
+    60% { transform: scale(0.8) rotate(-20deg); }
+    100% { transform: scale(1) rotate(0deg); }
 }
 
-@keyframes shake {
-    0% { transform: translate(1px, 1px) rotate(0deg); }
-    10% { transform: translate(-1px, -2px) rotate(-1deg); }
-    20% { transform: translate(-3px, 0px) rotate(1deg); }
-    30% { transform: translate(3px, 2px) rotate(0deg); }
-    40% { transform: translate(1px, -1px) rotate(1deg); }
-    50% { transform: translate(-1px, 2px) rotate(-1deg); }
-    60% { transform: translate(-3px, 1px) rotate(0deg); }
-    70% { transform: translate(3px, 1px) rotate(-1deg); }
-    80% { transform: translate(-1px, -1px) rotate(1deg); }
-    90% { transform: translate(1px, 2px) rotate(0deg); }
-    100% { transform: translate(1px, -2px) rotate(-1deg); }
-}
-
-.shake {
-    animation: shake 0.5s;
+@keyframes pulseText {
+    from { text-shadow: 0 0 5px red; }
+    to { text-shadow: 0 0 15px red; transform: scale(1.1); }
 }
 
 @keyframes popIn {
@@ -414,4 +504,12 @@ button.hidden {
 
 .screen-shake {
     animation: shake 0.5s;
+}
+@keyframes shake {
+    0% { transform: translate(1px, 1px) rotate(0deg); }
+    20% { transform: translate(-3px, 0px) rotate(1deg); }
+    40% { transform: translate(1px, -1px) rotate(1deg); }
+    60% { transform: translate(-3px, 1px) rotate(0deg); }
+    80% { transform: translate(-1px, -1px) rotate(1deg); }
+    100% { transform: translate(1px, -2px) rotate(-1deg); }
 }

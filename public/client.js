@@ -1,4 +1,3 @@
-
 const socket = io();
 
 // --- Elementos DOM ---
@@ -12,7 +11,9 @@ const inputs = {
     username: document.getElementById('username-input'),
     roomCode: document.getElementById('room-code-input'),
     word: document.getElementById('word-input'),
-    customWordsToggle: document.getElementById('allow-custom-words-toggle')
+    customWordsToggle: document.getElementById('allow-custom-words-toggle'),
+    gameModeSelect: document.getElementById('game-mode-select'),
+    clue: document.getElementById('clue-input')
 };
 
 const btns = {
@@ -20,7 +21,10 @@ const btns = {
     join: document.getElementById('join-room-btn'),
     start: document.getElementById('start-btn'),
     surrender: document.getElementById('surrender-btn'),
-    back: document.getElementById('back-to-lobby')
+    back: document.getElementById('back-to-lobby'),
+    rules: document.getElementById('rules-btn'),
+    closeRules: document.getElementById('close-rules-btn'),
+    sendClue: document.getElementById('send-clue-btn')
 };
 
 const displays = {
@@ -34,7 +38,21 @@ const displays = {
     activePlayers: document.getElementById('active-players-list'),
     bombGraphic: document.querySelector('.bomb-graphic'),
     winnerName: document.getElementById('winner-name'),
-    gameOverOverlay: document.getElementById('game-over-overlay')
+    gameOverOverlay: document.getElementById('game-over-overlay'),
+    rulesModal: document.getElementById('rules-modal'),
+    
+    // Containers de modo
+    bombArea: document.getElementById('bomb-game-area'),
+    impostorArea: document.getElementById('impostor-game-area'),
+    
+    // Impostor Elements
+    impostorRoleCard: document.getElementById('impostor-role-card'),
+    secretWord: document.getElementById('my-secret-word'),
+    roleDesc: document.getElementById('role-desc'),
+    impostorPhase: document.getElementById('impostor-phase-display'),
+    impostorInput: document.getElementById('impostor-input-area'),
+    impostorVote: document.getElementById('impostor-vote-area'),
+    cluesList: document.getElementById('clues-list')
 };
 
 // --- Estado Local ---
@@ -42,6 +60,8 @@ let myPlayerId = null;
 let isLeader = false;
 let currentRoomState = null;
 let timerInterval = null;
+let myImpostorRole = { isImpostor: false, secretWord: null }; // Estado privado
+
 let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 // --- Sonidos (Sintetizados) ---
@@ -78,6 +98,14 @@ function playSound(type) {
         gain.gain.linearRampToValueAtTime(0, now + 0.3);
         osc.start(now);
         osc.stop(now + 0.3);
+    } else if (type === 'reveal') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.linearRampToValueAtTime(600, now + 0.5);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 1);
+        osc.start(now);
+        osc.stop(now + 1);
     }
 }
 
@@ -88,6 +116,10 @@ function showScreen(screenName) {
 }
 
 // --- Event Listeners ---
+
+// Rules
+btns.rules.addEventListener('click', () => displays.rulesModal.classList.remove('hidden'));
+btns.closeRules.addEventListener('click', () => displays.rulesModal.classList.add('hidden'));
 
 // Login / Crear Sala
 btns.create.addEventListener('click', () => {
@@ -110,13 +142,20 @@ btns.join.addEventListener('click', () => {
     }
 });
 
-// Configuración de Sala (Toggle) - Opción Líder
+// Configuración de Sala - Opción Líder
 inputs.customWordsToggle.addEventListener('change', (e) => {
     if (isLeader) {
         socket.emit('toggle_settings', { allowCustomWords: e.target.checked });
     } else {
-        // Revertir visualmente si no es líder y trata de cambiarlo (backup)
         e.target.checked = !e.target.checked;
+    }
+});
+
+inputs.gameModeSelect.addEventListener('change', (e) => {
+    if (isLeader) {
+        socket.emit('change_mode', e.target.value);
+    } else {
+        // Revert to prev value if not leader (controlled by render)
     }
 });
 
@@ -128,7 +167,7 @@ btns.start.addEventListener('click', () => {
     }
 });
 
-// Input de Palabra
+// Input de Palabra (Explosion)
 inputs.word.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
         const word = inputs.word.value;
@@ -152,6 +191,16 @@ btns.back.addEventListener('click', () => {
     }
 });
 
+// Impostor Actions
+btns.sendClue.addEventListener('click', () => {
+    const val = inputs.clue.value;
+    if (val) {
+        socket.emit('submit_clue', val);
+        inputs.clue.value = '';
+        displays.impostorInput.classList.add('hidden'); // Ocultar inmediato para feedback
+    }
+});
+
 // --- Socket Events ---
 
 socket.on('room_joined', (data) => {
@@ -160,13 +209,14 @@ socket.on('room_joined', (data) => {
     displays.roomCode.textContent = data.roomId;
     showScreen('waiting');
     
-    // Configurar UI para líder
     if (isLeader) {
         btns.start.classList.remove('hidden');
         inputs.customWordsToggle.disabled = false;
+        inputs.gameModeSelect.disabled = false;
     } else {
         btns.start.classList.add('hidden');
         inputs.customWordsToggle.disabled = true;
+        inputs.gameModeSelect.disabled = true;
     }
 });
 
@@ -183,8 +233,6 @@ socket.on('word_accepted', () => {
     playSound('valid');
     displays.feedback.textContent = '¡Correcto!';
     displays.feedback.style.color = 'var(--success)';
-    
-    // Animación de pase
     displays.bombGraphic.classList.add('passing');
     setTimeout(() => displays.bombGraphic.classList.remove('passing'), 500);
 });
@@ -208,119 +256,194 @@ socket.on('explosion', (data) => {
 });
 
 socket.on('game_over', (data) => {
-    displays.winnerName.textContent = data.winner === 'Nadie' ? '¡Empate!' : `¡Ganador: ${data.winner}!`;
+    displays.winnerName.textContent = `¡Ganador: ${data.winner}!`;
     displays.gameOverOverlay.classList.remove('hidden');
     clearInterval(timerInterval);
 });
 
+// Impostor Events
+socket.on('impostor_role', (data) => {
+    myImpostorRole = data;
+    playSound('reveal');
+});
+socket.on('impostor_ejected', (data) => {
+    playSound('explosion');
+    alert(`${data.name} fue expulsado. Era ${data.isImpostor ? 'EL IMPOSTOR' : 'INOCENTE'}.`);
+});
+socket.on('impostor_skipped', () => {
+    alert("Empate en la votación. Nadie fue expulsado.");
+});
+
+
 // --- Render Logic ---
 
 function renderState(state) {
-    // 1. Actualizar Configuración en UI (para todos)
+    // 1. Settings Sync
     inputs.customWordsToggle.checked = state.allowCustomWords;
+    inputs.gameModeSelect.value = state.gameMode;
+    
+    // Toggle visibility de options basado en modo
+    document.getElementById('custom-words-container').style.display = 
+        state.gameMode === 'explosion' ? 'flex' : 'none';
 
-    // 2. Pantalla de Espera
+    // 2. Waiting Screen
     if (state.status === 'waiting') {
-        displays.waitingPlayers.innerHTML = state.players.map(p => `
-            <div class="player-card">
-                <div class="player-avatar">${p.avatar}</div>
-                <div class="player-name">${p.name}</div>
-                ${p.isLeader ? '👑' : ''}
-            </div>
-        `).join('');
-        
-        // Si soy líder, actualizar estado del botón start
-        if (isLeader) {
-            btns.start.disabled = state.players.length < 2;
-        }
-        
-        // Reset UI de juego
+        renderWaitingPlayers(state.players);
+        if (isLeader) btns.start.disabled = state.players.length < 2;
         displays.gameOverOverlay.classList.add('hidden');
     }
 
-    // 3. Pantalla de Juego
+    // 3. Game Screen
     if (state.status === 'playing') {
         if (!screens.game.classList.contains('active')) {
             showScreen('game');
         }
 
-        // Datos de ronda
-        displays.syllable.textContent = state.currentSyllable;
-        
-        const currentPlayer = state.players[state.currentTurnIndex];
-        const isMyTurn = currentPlayer.id === myPlayerId;
-
-        inputs.word.disabled = !isMyTurn;
-        btns.surrender.disabled = !isMyTurn;
-        
-        if (isMyTurn) {
-            inputs.word.focus();
-            inputs.word.placeholder = `Escribe una palabra con ${state.currentSyllable}...`;
-            displays.feedback.textContent = '';
+        // Switch Game UI
+        if (state.gameMode === 'explosion') {
+            displays.bombArea.classList.remove('hidden');
+            displays.impostorArea.classList.add('hidden');
+            renderExplosionGame(state);
         } else {
-            inputs.word.placeholder = `Turno de ${currentPlayer.name}`;
-            inputs.word.value = '';
+            displays.bombArea.classList.add('hidden');
+            displays.impostorArea.classList.remove('hidden');
+            renderImpostorGame(state);
         }
-
-        // Render Lista Jugadores (Footer)
-        renderActivePlayers(state.players, state.currentTurnIndex);
-
-        // Timer Visual
-        handleTimer(state.bombEndTime);
+        
+        // Footer is common
+        renderActivePlayers(state.players, state.currentTurnIndex, state.gameMode);
     }
 }
 
-function renderActivePlayers(players, turnIndex) {
+function renderWaitingPlayers(players) {
+    displays.waitingPlayers.innerHTML = players.map(p => `
+        <div class="player-card">
+            <div class="player-avatar">${p.avatar}</div>
+            <div class="player-name">${p.name}</div>
+            ${p.isLeader ? '👑' : ''}
+        </div>
+    `).join('');
+}
+
+function renderExplosionGame(state) {
+    displays.syllable.textContent = state.currentSyllable;
+    const currentPlayer = state.players[state.currentTurnIndex];
+    const isMyTurn = currentPlayer.id === myPlayerId;
+
+    inputs.word.disabled = !isMyTurn;
+    btns.surrender.disabled = !isMyTurn;
+    
+    if (isMyTurn) {
+        inputs.word.focus();
+        inputs.word.placeholder = `Escribe palabra con ${state.currentSyllable}...`;
+    } else {
+        inputs.word.placeholder = `Turno de ${currentPlayer.name}`;
+        inputs.word.value = '';
+    }
+
+    handleTimer(state.bombEndTime);
+}
+
+function renderImpostorGame(state) {
+    // Phase Banner
+    const phasesES = { 'reveal': 'Revelación', 'clue': 'Pistas', 'vote': 'Votación', 'result': 'Resultado' };
+    displays.impostorPhase.textContent = `Fase: ${phasesES[state.impostorPhase]}`;
+
+    // Role Card
+    if (state.impostorPhase === 'reveal') {
+        displays.impostorRoleCard.style.display = 'block';
+        if (myImpostorRole.isImpostor) {
+            displays.impostorRoleCard.classList.add('impostor-reveal');
+            displays.secretWord.textContent = "¡IMPOSTOR!";
+            displays.roleDesc.textContent = "Nadie sabe que eres tú. Finge saber la palabra secreta.";
+        } else {
+            displays.impostorRoleCard.classList.remove('impostor-reveal');
+            displays.secretWord.textContent = myImpostorRole.secretWord;
+            displays.roleDesc.textContent = "Esta es la palabra secreta. Encuentra al mentiroso.";
+        }
+    } else {
+        displays.impostorRoleCard.style.display = 'none';
+    }
+
+    // Input Clue
+    const amIAlive = state.players.find(p => p.id === myPlayerId)?.lives > 0;
+    const alreadyClued = !!state.clues[myPlayerId];
+    
+    if (state.impostorPhase === 'clue' && amIAlive && !alreadyClued) {
+        displays.impostorInput.classList.remove('hidden');
+    } else {
+        displays.impostorInput.classList.add('hidden');
+    }
+
+    // Voting
+    const alreadyVoted = state.players.find(p => p.id === myPlayerId)?.hasVoted; // server needs to send this info if sanitized?
+    // Actually, sanitization sends hasVoted.
+    const meInState = state.players.find(p => p.id === myPlayerId);
+    
+    if (state.impostorPhase === 'vote' && amIAlive && !meInState.hasVoted) {
+        displays.impostorVote.classList.remove('hidden');
+        displays.impostorVote.innerHTML = state.players
+            .filter(p => p.lives > 0 && p.id !== myPlayerId) // Don't vote self
+            .map(p => `<button class="vote-btn" onclick="socket.emit('submit_vote', '${p.id}')">Votar a ${p.name} ${p.avatar}</button>`)
+            .join('');
+    } else {
+        displays.impostorVote.classList.add('hidden');
+    }
+
+    // Clues List
+    if (Object.keys(state.clues).length > 0) {
+        displays.cluesList.innerHTML = state.players
+            .filter(p => state.clues[p.id])
+            .map(p => `<div class="clue-item">${p.avatar} ${p.name}: <span>${state.clues[p.id]}</span></div>`)
+            .join('');
+    } else {
+        displays.cluesList.innerHTML = '';
+    }
+}
+
+function renderActivePlayers(players, turnIndex, mode) {
     displays.activePlayers.innerHTML = players.map((p, i) => {
-        const isActive = i === turnIndex;
+        const isActive = (mode === 'explosion' && i === turnIndex);
         const isDead = p.lives <= 0;
-        const hearts = '❤️'.repeat(p.lives) + '🖤'.repeat(3 - p.lives);
+        let statusIcon = '';
+        
+        if (mode === 'explosion') {
+            statusIcon = '❤️'.repeat(p.lives) + '🖤'.repeat(3 - p.lives);
+        } else {
+            statusIcon = isDead ? '👻' : '🙂';
+        }
         
         return `
             <div id="player-card-${i}" class="player-card ${isActive ? 'active-turn' : ''} ${isDead ? 'eliminated' : ''}">
                 <div class="player-avatar">${p.avatar}</div>
                 <div class="player-name">${p.name}</div>
-                <div class="player-lives">${hearts}</div>
+                <div class="player-lives">${statusIcon}</div>
             </div>
         `;
     }).join('');
 
-    // Scroll Suave para centrar al jugador activo
-    const activeCard = document.getElementById(`player-card-${turnIndex}`);
-    if (activeCard) {
-        activeCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    if (mode === 'explosion') {
+        const activeCard = document.getElementById(`player-card-${turnIndex}`);
+        if (activeCard) {
+            activeCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        }
     }
 }
 
 function handleTimer(endTime) {
     if (timerInterval) clearInterval(timerInterval);
-
     const update = () => {
         const now = Date.now();
         const remaining = Math.max(0, endTime - now);
         const seconds = (remaining / 1000).toFixed(2);
-        
         displays.bombTimer.textContent = `${seconds}s`;
-
-        // Efectos visuales del timer
+        
         if (remaining < 5000) {
             displays.bombTimer.classList.add('urgent');
-            displays.bombGraphic.classList.add('critical');
-            if (Math.random() > 0.7) playSound('tick'); // Tick aleatorio acelerado
         } else {
             displays.bombTimer.classList.remove('urgent');
-            displays.bombGraphic.classList.remove('critical');
-            if (Math.floor(Date.now() / 1000) !== Math.floor((Date.now() - 100) / 1000)) {
-                playSound('tick'); // Tick cada segundo
-            }
-        }
-
-        if (remaining <= 0) {
-            clearInterval(timerInterval);
-            displays.bombTimer.textContent = "BOOM!";
         }
     };
-
-    update(); // Ejecutar inmediatamente
+    update();
     timerInterval = setInterval(update, 100);
 }
