@@ -183,12 +183,10 @@ btns.surrender.addEventListener('click', () => {
     socket.emit('surrender');
 });
 
-// Volver al Lobby
+// Volver al Lobby (Post Game Over)
 btns.back.addEventListener('click', () => {
-    if (confirm("¿Seguro que quieres volver a la sala de espera?")) {
-        displays.gameOverOverlay.classList.add('hidden');
-        showScreen('waiting');
-    }
+    // Simplemente cerramos el overlay porque la pantalla subyacente ya es el Lobby
+    displays.gameOverOverlay.classList.add('hidden');
 });
 
 // Impostor Actions
@@ -221,7 +219,17 @@ socket.on('room_joined', (data) => {
 });
 
 socket.on('error_msg', (msg) => {
-    displays.loginError.textContent = msg;
+    // Si estamos en waiting, lo mostramos en el status o login error
+    if (screens.login.classList.contains('active')) {
+        displays.loginError.textContent = msg;
+    } else {
+        // Usar alert para errores criticos en lobby (ej: min jugadores)
+        alert(msg);
+        displays.waitingStatus.textContent = msg;
+        setTimeout(() => {
+             if(displays.waitingStatus.textContent === msg) displays.waitingStatus.textContent = 'Esperando jugadores...';
+        }, 3000);
+    }
 });
 
 socket.on('state_update', (state) => {
@@ -259,6 +267,8 @@ socket.on('game_over', (data) => {
     displays.winnerName.textContent = `¡Ganador: ${data.winner}!`;
     displays.gameOverOverlay.classList.remove('hidden');
     clearInterval(timerInterval);
+    // Nota: El servidor envía 'state_update' con status 'waiting' casi inmediatamente.
+    // El renderState cambiará la vista de fondo a 'waiting-screen'.
 });
 
 // Impostor Events
@@ -286,17 +296,25 @@ function renderState(state) {
     document.getElementById('custom-words-container').style.display = 
         state.gameMode === 'explosion' ? 'flex' : 'none';
 
-    // 2. Waiting Screen
+    // 2. Waiting Screen (LOBBY)
     if (state.status === 'waiting') {
+        if (!screens.waiting.classList.contains('active')) {
+            showScreen('waiting');
+        }
         renderWaitingPlayers(state.players);
-        if (isLeader) btns.start.disabled = state.players.length < 2;
-        displays.gameOverOverlay.classList.add('hidden');
+        // NOTA: NO ocultamos gameOverOverlay aquí automáticamente para permitir que el usuario vea el resultado.
+        
+        if (isLeader) {
+             btns.start.disabled = false; // Rehabilitar botón
+        }
     }
 
     // 3. Game Screen
     if (state.status === 'playing') {
         if (!screens.game.classList.contains('active')) {
             showScreen('game');
+            // Asegurar que el overlay se cierre si empieza nueva partida
+            displays.gameOverOverlay.classList.add('hidden');
         }
 
         // Switch Game UI
@@ -321,6 +339,7 @@ function renderWaitingPlayers(players) {
             <div class="player-avatar">${p.avatar}</div>
             <div class="player-name">${p.name}</div>
             ${p.isLeader ? '👑' : ''}
+            <div style="font-size:0.8rem; margin-top:5px;">🏆 ${currentRoomState && currentRoomState.leaderboard[p.name] || 0}</div>
         </div>
     `).join('');
 }
@@ -376,8 +395,6 @@ function renderImpostorGame(state) {
     }
 
     // Voting
-    const alreadyVoted = state.players.find(p => p.id === myPlayerId)?.hasVoted; // server needs to send this info if sanitized?
-    // Actually, sanitization sends hasVoted.
     const meInState = state.players.find(p => p.id === myPlayerId);
     
     if (state.impostorPhase === 'vote' && amIAlive && !meInState.hasVoted) {

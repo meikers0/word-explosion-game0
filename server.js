@@ -210,7 +210,8 @@ function handleExplosion(room) {
     if (winner) {
       room.leaderboard[winner.name] = (room.leaderboard[winner.name] || 0) + 1;
     }
-    room.status = 'waiting';
+    // Estado pasa a waiting para redireccionar a los clientes al Lobby
+    room.status = 'waiting'; 
     io.to(room.id).emit('game_over', { winner: winner ? winner.name : 'Nadie' });
     io.to(room.id).emit('state_update', getPublicState(room));
   } else if (alivePlayers.length === 0 && room.players.length > 0) {
@@ -392,7 +393,17 @@ io.on('connection', (socket) => {
 
     const player = room.players.find(p => p.id === socket.id);
     if (!player || !player.isLeader) return;
-    if (room.players.length < 2) return; // Ojo: Impostor necesita min 3 idealmente, pero dejamos 2 para test
+    
+    // REGLA: Mínimo 2 jugadores para Explosion (Testeo)
+    // REGLA: Mínimo 3 jugadores para Impostor (Estricto)
+    if (room.gameMode === 'impostor' && room.players.length < 3) {
+      socket.emit('error_msg', 'Se requieren al menos 3 jugadores para el Modo Impostor');
+      return;
+    }
+    if (room.players.length < 2) {
+       // Opcional: Permitir testing solitario para dev, pero normal 2
+       // return; 
+    }
 
     room.status = 'playing';
     room.usedWords.clear();
@@ -407,7 +418,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- ENVIAR PALABRA (EXPLOSION) ---
+  // --- ENVIAR PALABRA (EXPLOSION - LÓGICA CORREGIDA) ---
   socket.on('submit_word', (wordInput) => {
     const roomId = socket.data.roomId;
     const room = rooms[roomId];
@@ -419,18 +430,23 @@ io.on('connection', (socket) => {
     let word = wordInput.trim().toUpperCase();
     const syllable = room.currentSyllable;
 
+    // 1. REGLA FÍSICA: Debe contener la sílaba (SIEMPRE)
     if (!word.includes(syllable)) {
       socket.emit('word_rejected', `Debe contener "${syllable}"`);
       return;
     }
 
+    // 2. REGLA DE ESTADO: No debe haber sido usada (SIEMPRE)
     if (room.usedWords.has(word)) {
       socket.emit('word_rejected', '¡Palabra ya usada!');
       return;
     }
 
+    // 3. REGLA DE LÉXICO: Diccionario O Palabras Inventadas
     const inDict = GLOBAL_DICTIONARY.has(word);
     
+    // Si la palabra está en el diccionario, es válida.
+    // Si NO está, SOLO es válida si se permiten palabras inventadas.
     if (inDict || room.allowCustomWords) {
       room.usedWords.add(word);
       socket.emit('word_accepted');
